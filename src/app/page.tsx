@@ -161,7 +161,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="converter" className="w-full max-w-3xl bg-zinc-900 rounded-2xl shadow-2xl p-8 mb-16 border border-zinc-700 relative z-10 scroll-animate opacity-0 translate-y-8">
+      <section id="converter" className="w-full max-w-3xl bg-zinc-900 rounded-2xl shadow-2xl p-8 mb-16 border border-zinc-700 relative z-20 scroll-animate opacity-0 translate-y-8">
         <ImageConverter />
       </section>
 
