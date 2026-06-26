@@ -47,7 +47,10 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Convertino | Free Unlimited Image Converter',
     description: 'Fast, secure, and 100% free online image converter. No registration required.',
-  }
+  },
+  verification: {
+    google: 'googleef6c7884532d40e8.html',
+  },
 };
 
 export default function RootLayout({
