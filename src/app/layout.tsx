@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from './NavBar';
+import Link from 'next/link';
 import HelloBar from './components/HelloBar';
 import ToastProvider from './components/ToastProvider';
+import CookieConsent from './components/CookieConsent';
 import Script from 'next/script';
 
 const geistSans = Geist({
@@ -123,11 +125,21 @@ export default function RootLayout({
           {children}
         </main>
         
-        <footer className="w-full border-t border-zinc-800 bg-zinc-900/80 text-center py-4 text-xs text-gray-400 mt-8">
-          Made with ❤️ by <a href="https://www.linkedin.com/in/billal-chami/" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 transition">Billal Chami </a>
-           &  <a href="https://ablamohamedamine.com/" target="_blank" rel="dofollow" className="text-purple-400 hover:text-purple-300 transition">Mohamed Amine Abla</a>
+        <footer className="w-full border-t border-zinc-800 bg-zinc-900/80 py-4 text-xs text-gray-400 mt-8">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <span>
+              Made with ❤️ by <a href="https://www.linkedin.com/in/billal-chami/" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 transition">Billal Chami</a>
+              &nbsp;&amp;&nbsp;<a href="https://ablamohamedamine.com/" target="_blank" rel="dofollow" className="text-purple-400 hover:text-purple-300 transition">Mohamed Amine Abla</a>
+            </span>
+            <div className="flex items-center gap-4">
+              <Link href="/privacy" className="hover:text-purple-400 transition-colors">Privacy Policy</Link>
+              <Link href="/cookies" className="hover:text-purple-400 transition-colors">Cookie Policy</Link>
+              <Link href="/terms" className="hover:text-purple-400 transition-colors">Terms of Service</Link>
+            </div>
+          </div>
         </footer>
         
+        <CookieConsent />
         <ToastProvider />
       </body>
     </html>
