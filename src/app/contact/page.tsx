@@ -115,10 +115,9 @@ export default function ContactPage() {
                 setFormStatus('sending');
                 try {
                   await emailjs.sendForm(
-                    'service_iigpica',
-                    'template_vdktank',
+                    'service_ftfofc7',
+                    'template_rcy710u',
                     formRef.current!,
-                    'dVdFc5R-_JsiC4aNE'
                   );
                   setFormStatus('success');
                   formRef.current?.reset();
