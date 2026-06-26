@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     description: 'Fast, secure, and 100% free online image converter. No registration required.',
   },
   verification: {
-    google: 'googleef6c7884532d40e8.html',
+    google: '94wezaCKdI7AeRjZ7aVJT7x6UPfGQg5toFkbRHky3kY',
   },
 };
 
