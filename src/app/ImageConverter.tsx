@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import imageCompression from "browser-image-compression";
 import JSZip from "jszip";
@@ -21,8 +21,8 @@ interface ConvertedFile {
 }
 
 interface ImageConverterProps {
-  fixedInputFormat?: string; // e.g., 'png'
-  fixedOutputFormat?: string; // e.g., 'webp'
+  fixedInputFormat?: string;   // e.g., 'png'
+  fixedOutputFormat?: string;  // e.g., 'webp'
 }
 
 const formatMime: Record<string, string> = {
@@ -93,7 +93,6 @@ const formatOptions = [
 
 export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: ImageConverterProps = {}) {
   const [files, setFiles] = useState<PreviewFile[]>([]);
-  // Use fixedOutputFormat if provided, otherwise default to "webp"
   const [outputFormat, setOutputFormat] = useState(fixedOutputFormat || "webp");
   const [compression, setCompression] = useState(80);
   const [converted, setConverted] = useState<ConvertedFile[]>([]);
@@ -103,7 +102,11 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Update output format if prop changes
+  // Layout refs to handle automatic dynamic scrolling
+  const formatSectionRef = useRef<HTMLDivElement>(null);
+  const convertedSectionRef = useRef<HTMLDivElement>(null);
+
+  // Keep output format synchronized if props update dynamically
   useEffect(() => {
     if (fixedOutputFormat) {
       setOutputFormat(fixedOutputFormat);
@@ -113,61 +116,36 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
     
-    setUploading(true);
-    setUploadProgress(0);
+    const mapped = acceptedFiles.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
     
-    const totalFiles = acceptedFiles.length;
-    let processedFiles = 0;
-    
-    const processFiles = () => {
-      const batch = acceptedFiles.slice(processedFiles, processedFiles + 1);
-      
-      batch.forEach((file) => {
-        const mapped = {
-          file,
-          preview: URL.createObjectURL(file),
-        };
-        setFiles((curr) => [...curr, mapped]);
-        processedFiles++;
-        
-        const progress = Math.round((processedFiles / totalFiles) * 100);
-        setUploadProgress(progress);
-        
-        if (processedFiles < totalFiles) {
-          setTimeout(processFiles, 100);
-        } else {
-          setTimeout(() => {
-            setUploading(false);
-            setUploadProgress(0);
-            setConverted([]);
-            setProgress([]);
-            toast.success(`${totalFiles} image${totalFiles > 1 ? 's' : ''} uploaded successfully!`);
-          }, 200);
-        }
-      });
-    };
-    
-    processFiles();
-  }, []);
+    setFiles((curr) => [...curr, ...mapped]);
+    setConverted([]);
+    setProgress([]);
+    toast.success(`${acceptedFiles.length} image${acceptedFiles.length > 1 ? 's' : ''} uploaded successfully!`);
 
-  // Determine accept criteria based on fixedInputFormat
-  const acceptCriteria = fixedInputFormat 
-    ? { [formatMime[fixedInputFormat]]: [] }
-    : { "image/*": [] };
+    // Automatically scroll to the "Select Output Format" section once upload finishes
+    setTimeout(() => {
+      formatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: acceptCriteria,
+    accept: fixedInputFormat && formatMime[fixedInputFormat]
+      ? { [formatMime[fixedInputFormat]]: [] }
+      : { "image/*": [] },
     multiple: true,
   });
 
-  React.useEffect(() => {
+  // Clean up previews on unmount
+  useEffect(() => {
     return () => files.forEach((f) => URL.revokeObjectURL(f.preview));
   }, [files]);
 
   const handleFormatChange = (format: string) => {
-    // Prevent changing format if fixedOutputFormat is set
-    if (fixedOutputFormat) return;
     setOutputFormat(format);
     setConverted([]);
     setProgress([]);
@@ -192,12 +170,14 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
     setProgress(Array(files.length).fill(0));
     const results: ConvertedFile[] = [];
     let errorOccurred = false;
+
     for (let i = 0; i < files.length; i++) {
       const { file } = files[i];
       let convertedBlob: Blob | null = null;
       const outName = file.name.replace(/\.[^.]+$/, "." + outputFormat);
       const originalSize = file.size;
       let compressedSize = 0;
+
       try {
         if (outputFormat === "svg") {
           convertedBlob = file;
@@ -218,6 +198,7 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
           };
           convertedBlob = await imageCompression(file, options);
         }
+
         if (!convertedBlob) throw new Error("Conversion failed");
         compressedSize = convertedBlob.size;
         results.push({
@@ -238,13 +219,20 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
         });
       }
     }
+
     setConverted(results);
     setProgress(Array(files.length).fill(100));
     setProcessing(false);
+
     if (errorOccurred) {
       toast.error('Some images failed to convert.');
     } else {
       toast.success('All images converted successfully!');
+      
+      // Automatically scroll to the "Converted Images" section when complete
+      setTimeout(() => {
+        convertedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
     }
   };
 
@@ -266,16 +254,15 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
   const selectedFormat = formatOptions.find(option => option.value === outputFormat);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 w-full max-w-4xl mx-auto">
       {/* Upload Section */}
       <section className="relative bg-zinc-900/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-8 hover:border-zinc-600 transition-all duration-300">
         <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-blue-500/10 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
         
-        <div {...getRootProps()} className={`relative cursor-pointer transition-all duration-300 ${isDragActive ? 'scale-105' : 'hover:scale-[1.02]'}`}>
-          <input {...getInputProps()} />
+        <div { ...getRootProps() } className={`relative cursor-pointer transition-all duration-300 ${isDragActive ? 'scale-105' : 'hover:scale-[1.02]'}`}>
+          <input { ...getInputProps() } />
           
           <div className="text-center">
-            {/* Upload Icon */}
             <div className="mx-auto w-20 h-20 mb-6 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center border border-purple-500/30">
               {uploading ? (
                 <div className="w-10 h-10 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin"></div>
@@ -287,38 +274,29 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
             </div>
             
             <h3 className="text-xl font-semibold text-gray-200 mb-2">
-              {uploading 
-                ? 'Uploading...' 
-                : isDragActive 
-                  ? 'Drop images here' 
-                  : fixedInputFormat 
-                    ? `Upload ${fixedInputFormat.toUpperCase()} Images` 
-                    : 'Upload Images'}
+              {uploading ? 'Uploading...' : isDragActive ? 'Drop images here' : 'Upload Images'}
             </h3>
             <p className="text-gray-400 mb-4">
-              {uploading 
-                ? 'Processing your images...' 
-                : `Drag & drop ${fixedInputFormat?.toUpperCase() || ''} images here, or click to browse`}
+              {uploading ? 'Processing your images...' : `Drag & drop ${fixedInputFormat ? fixedInputFormat.toUpperCase() : 'images'} here, or click to browse`}
             </p>
             
-            {/* Upload Progress Bar */}
             {uploading && (
-              <div className="mb-4">
+              <div className="mb-4 max-w-xs mx-auto">
                 <div className="w-full h-3 bg-zinc-700 rounded-full relative overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
                   />
-                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-xs text-gray-300 font-bold px-1">
+                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] text-gray-300 font-bold px-1">
                     {uploadProgress}%
                   </span>
                 </div>
-                <p className="text-sm text-gray-400 mt-2">Uploading {uploadProgress}% complete</p>
+                <p className="text-xs text-gray-400 mt-2">Uploading {uploadProgress}% complete</p>
               </div>
             )}
             
             <button 
-              className={`px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-300 font-medium ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-300 font-medium cursor-pointer ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={uploading}
             >
               {uploading ? 'Uploading...' : 'Choose Files'}
@@ -327,14 +305,14 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
         </div>
       </section>
 
-      {/* Image Previews */}
+      {/* Image Previews Section */}
       {files.length > 0 && (
-        <div className="mt-8">
+        <section className="mt-8">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-200">Uploaded Images ({files.length})</h3>
             <button 
               onClick={clearAll} 
-              className="text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1 rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-400" 
+              className="text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1 rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-400 hover:cursor-pointer" 
               aria-label="Clear all images"
             >
               Clear All
@@ -348,7 +326,7 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
                 className="group relative bg-zinc-800/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-3 hover:border-zinc-600 transition-all duration-300 transform hover:scale-105"
               >
                 <button
-                  className="absolute top-2 right-2 bg-red-500/20 hover:bg-red-500/30 rounded-full p-1 text-red-400 hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400 z-10 transition-all duration-300 opacity-0 group-hover:opacity-100"
+                  className="absolute top-2 right-2 bg-red-500/20 hover:bg-red-500/30 rounded-full p-1 text-red-400 hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400 z-10 transition-all duration-300 opacity-0 group-hover:opacity-100 cursor-pointer"
                   aria-label={`Remove image ${f.file.name}`}
                   onClick={() => {
                     setFiles(files.filter((_, i) => i !== idx));
@@ -376,7 +354,6 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
                   <span className="text-[10px] text-gray-400">{(f.file.size/1024).toFixed(1)} KB</span>
                 </div>
                 
-                {/* Progress bar for conversion */}
                 {progress[idx] === 100 ? (
                   <div className="w-full flex justify-center items-center mt-2">
                     <div className="w-6 h-6 bg-green-500/20 rounded-full flex items-center justify-center">
@@ -387,7 +364,7 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
                   </div>
                 ) : (processing || progress[idx] > 0) ? (
                   <div className="w-full h-3 bg-zinc-700 rounded-full mt-2 relative overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-300"
                       style={{ width: `${progress[idx] || 0}%` }}
                     />
@@ -399,93 +376,84 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Format Selection - Hidden or Read-only if fixedOutputFormat is present */}
-      {!fixedOutputFormat ? (
-        <section className="relative bg-zinc-900/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-6 hover:border-zinc-600 transition-all duration-300 overflow-visible z-10">
-          <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-blue-500/10 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
-          
-          <div className="relative z-10">
-            <h2 className="text-xl font-bold mb-4 text-gray-200 flex items-center gap-2">
-              <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-              </svg>
-              Select Output Format
-            </h2>
+      {/* Format Selection (with assigned scroll ref) */}
+      <div ref={formatSectionRef} className="scroll-mt-24">
+        {!fixedOutputFormat && (
+          <section className="relative bg-zinc-900/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-6 hover:border-zinc-600 transition-all duration-300 overflow-visible z-20">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-blue-500/10 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
             
-            {/* Custom Dropdown */}
-            <div className="relative overflow-visible">
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full flex items-center justify-between bg-zinc-800 border border-zinc-600 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 hover:bg-zinc-750 transition-all duration-300"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg bg-${selectedFormat?.color}-500/20 text-${selectedFormat?.color}-400`}>
-                    {selectedFormat?.icon}
-                  </div>
-                  <div className="text-left">
-                    <span className="block font-semibold">{selectedFormat?.label}</span>
-                    <span className="text-xs text-gray-400">{selectedFormat?.description}</span>
-                  </div>
-                </div>
-                <svg 
-                  className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`} 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            <div className="relative z-10">
+              <h2 className="text-xl font-bold mb-4 text-gray-200 flex items-center gap-2">
+                <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
-              </button>
-
-              {/* Dropdown Menu */}
-              {isDropdownOpen && (
-                <div className="absolute w-full mt-2 bg-zinc-800 border border-zinc-600 rounded-xl shadow-xl z-50 overflow-hidden animate-fade-in-down">
-                  {formatOptions.map((option) => (
+                Select Output Format
+              </h2>
+              
+              <div className="relative overflow-visible">
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  disabled={processing}
+                  className="w-full px-4 py-3 bg-zinc-800/50 backdrop-blur-sm border border-zinc-600 rounded-lg text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 hover:border-zinc-500 flex items-center justify-between cursor-pointer"
+                  aria-label="Select output format"
+                >
+                  <div className="flex items-center gap-3">
+                    {selectedFormat?.icon}
+                    <span>{selectedFormat?.label}</span>
+                  </div>
+                  <div className={`w-5 h-5 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`}>
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+                
+                <div className={`absolute top-full left-0 right-0 mt-2 bg-zinc-800/95 backdrop-blur-sm border border-zinc-600 rounded-lg shadow-2xl overflow-hidden z-[999999] transition-all duration-300 ease-out ${
+                  isDropdownOpen 
+                    ? 'opacity-100 scale-100 translate-y-0' 
+                    : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'
+                }`}>
+                  {formatOptions.map((option, index) => (
                     <button
                       key={option.value}
                       onClick={() => handleFormatChange(option.value)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-700 transition-colors duration-200 ${
-                        outputFormat === option.value ? 'bg-zinc-700/50' : ''
+                      className={`w-full px-4 py-3 text-left hover:bg-gradient-to-r hover:from-purple-500/10 hover:to-pink-500/10 transition-all duration-300 flex items-center gap-3 group hover:cursor-pointer ${
+                        outputFormat === option.value ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/20' : ''
                       }`}
+                      style={{
+                        animationDelay: `${index * 50}ms`,
+                        transform: isDropdownOpen ? 'translateY(0)' : 'translateY(-10px)',
+                        opacity: isDropdownOpen ? 1 : 0,
+                        transition: `all 0.3s ease ${index * 50}ms`
+                      }}
                     >
-                      <div className={`p-2 rounded-lg bg-${option.color}-500/20 text-${option.color}-400`}>
-                        {option.icon}
-                      </div>
-                      <div className="text-left">
-                        <span className="block font-semibold text-gray-200">{option.label}</span>
-                        <span className="text-xs text-gray-400">{option.description}</span>
-                      </div>
+                      {option.icon}
+                      <span className="text-gray-200 group-hover:text-white transition-colors duration-300">{option.label}</span>
                       {outputFormat === option.value && (
-                        <svg className="w-5 h-5 text-green-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        <svg className="w-4 h-4 text-purple-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 13l4 4L19 7" />
                         </svg>
                       )}
                     </button>
                   ))}
                 </div>
-              )}
+              </div>
+              
+              <div className="mt-3 p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
+                <div className="text-sm text-gray-300">
+                  <span className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full bg-${selectedFormat?.color || 'purple'}-400 animate-pulse`}></span>
+                    <strong>{selectedFormat?.value.toUpperCase()}:</strong> {selectedFormat?.description}
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
-      ) : (
-        /* Read-only Output Format Display for Slug Pages */
-        <section className="relative bg-zinc-900/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-4 hover:border-zinc-600 transition-all duration-300">
-           <div className="flex items-center gap-3">
-             <div className="p-2 rounded-lg bg-green-500/20 text-green-400">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-             </div>
-             <div>
-                <h3 className="text-gray-200 font-semibold">Output Format</h3>
-                <p className="text-sm text-gray-400">Converting all files to <span className="text-green-400 font-bold uppercase">{fixedOutputFormat}</span></p>
-             </div>
-           </div>
-        </section>
-      )}
+          </section>
+        )}
+      </div>
 
       {/* Compression Slider */}
       <section className="relative bg-zinc-900/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-6 hover:border-zinc-600 transition-all duration-300">
@@ -521,67 +489,130 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
         </div>
       </section>
 
-      {/* Action Buttons */}
-      {files.length > 0 && (
-        <section className="flex justify-center gap-4">
-          <button
-            className="group relative bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-2xl hover:shadow-blue-500/25 hover:scale-105 transition-all duration-300 transform focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden"
-            onClick={convertAll}
-            disabled={processing}
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              {processing ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Converting...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                  Convert Images
-                </>
-              )}
-            </span>
-            <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-700 -skew-x-12 transform origin-left"></div>
-          </button>
-        </section>
-      )}
+      {/* Convert Button */}
+      <section className="flex justify-center">
+        <button
+          className="group relative bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-2xl hover:shadow-blue-500/25 hover:scale-105 transition-all duration-300 transform focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden cursor-pointer"
+          onClick={convertAll}
+          disabled={files.length === 0 || processing}
+          aria-label="Convert all images"
+        >
+          <span className="relative z-10 flex items-center gap-2">
+            {processing ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Converting...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Convert All Images
+              </>
+            )}
+          </span>
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        </button>
+      </section>
 
-      {/* --- NEW KO-FI SUPPORT BANNER --- */}
-      {converted.length > 0  && (
-        <section className="w-full max-w-lg mx-auto mt-6 bg-zinc-800/40 border border-purple-500/20 rounded-2xl p-6 text-center shadow-lg animate-fade-in-up">
-          <h3 className="text-gray-100 font-semibold mb-2 text-lg">
-            Convertino is 100% free and unlimited forever. 🚀
-          </h3>
-          <p className="text-sm text-gray-400 mb-5 leading-relaxed">
-            We don't run annoying ads or charge subscriptions. If this tool saved you time today, consider buying us a coffee to help cover the server costs and keep the project alive!
-          </p>
-          <a 
-            href="https://ko-fi.com/W7W36RUO9" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="inline-flex items-center gap-2 bg-[#C14AE8] hover:bg-[#a93fcb] text-white px-6 py-2.5 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 shadow-lg shadow-[#C14AE8]/20 focus:outline-none focus:ring-2 focus:ring-[#C14AE8] focus:ring-offset-2 focus:ring-offset-zinc-900"
+      {/* Converted Images Preview (with assigned scroll ref container) */}
+      <div ref={convertedSectionRef} className="scroll-mt-24">
+        {converted.length > 0 && (
+          <section className="relative bg-zinc-900/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-6 hover:border-zinc-600 transition-all duration-300">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-green-500/10 via-blue-500/10 to-purple-500/10 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
+            
+            <div className="relative z-10">
+              <h2 className="text-xl font-bold mb-4 text-gray-200 flex items-center gap-2">
+                <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Converted Images
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {converted.map((f, idx) => (
+                  <div
+                    key={idx}
+                    className="group relative bg-zinc-800/50 backdrop-blur-sm border border-zinc-700 rounded-xl p-3 hover:border-zinc-600 transition-all duration-300 transform hover:scale-105"
+                  >
+                    <button
+                      className="absolute top-2 right-2 bg-green-500/20 hover:bg-green-500/30 rounded-full p-1 text-green-400 hover:text-green-300 focus:outline-none focus:ring-2 focus:ring-green-400 z-10 transition-all duration-300 opacity-0 group-hover:opacity-100 cursor-pointer"
+                      aria-label={`Download image ${f.name}`}
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = f.url;
+                        a.download = f.name;
+                        a.click();
+                        toast.success('Image downloaded!');
+                      }}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                    </button>
+
+                    <img
+                      src={f.url}
+                      alt={f.name}
+                      className="w-full h-20 object-cover rounded-lg shadow-lg cursor-pointer hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-300"
+                      title="Click to download"
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = f.url;
+                        a.download = f.name;
+                        a.click();
+                        toast.success('Image downloaded!');
+                      }}
+                      tabIndex={0}
+                      aria-label={`Download image ${f.name}`}
+                    />
+                    
+                    <div className="mt-2 text-center">
+                      <span className="text-xs text-gray-300 truncate block" title={f.name}>
+                        {f.name}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {((f.compressedSize || 0) / 1024).toFixed(1)} KB
+                        {f.compressedSize && f.originalSize ? (
+                          <>
+                            {" "}
+                            <span className="text-green-400 font-bold">
+                              ({Math.round(100 - (f.compressedSize / f.originalSize) * 100)}% smaller)
+                            </span>
+                          </>
+                        ) : null}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* Ko-fi Support Section */}
+      {converted.length > 0 && (
+        <section className="flex justify-center mt-4">
+          <a
+            href="https://ko-fi.com/ablamohamedamine"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#ff38b8] text-white font-semibold rounded-lg shadow-md hover:bg-[#e030a2] transition-all duration-300 hover:scale-105 text-sm hover:cursor-pointer"
           >
-            {/* Native Ko-fi Cup SVG for perfect scaling */}
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.143h.125s2.321.233 4.167-2.31c1.371-1.895 2.335-5.187 2.358-5.197zM20.301 12.3c-1.22.951-2.476.993-2.476.993h-.146v-5.26h.22c.983 0 2.227.173 2.825 1.152.492.81.42 2.292-.423 3.115z" />
+            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.723.676-.723.676s-.115 5.537.188 10.378c.371 5.922 4.195 7.684 4.195 7.684s5.807.828 10.222-.162c4.32-.97 5.76-4.564 5.76-4.564s3.111.134 4.183-3.23c1.026-3.216-.467-6.183-.467-6.183zm-4.14 5.626s-.347 1.956-2.316 2.502c-1.848.514-4.707.391-7.143.16-2.583-.245-4.22-.962-4.48-3.791-.321-3.5-.16-7.46-.16-7.46h13.784s.22 3.856.315 8.589zm3.036-1.55c-.492.81-1.42 2.292-.423 3.115.983 0 2.227.173 2.825 1.152.613-1.022-.115-4.267-2.402-4.267z" />
             </svg>
             Support us on Ko-fi
           </a>
         </section>
       )}
-      {/* --------------------------------- */}
 
-      {/* Download Section */}
+      {/* Global ZIP Download Section */}
       {converted.length > 0 && (
         <section className="flex justify-center">
           <button
-            className="group relative bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-2xl hover:shadow-green-500/25 hover:scale-105 transition-all duration-300 transform focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden"
+            className="group relative bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-2xl hover:shadow-green-500/25 hover:scale-105 transition-all duration-300 transform focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden cursor-pointer"
             onClick={downloadZip}
             disabled={converted.length === 0}
             aria-label="Download all as ZIP"
@@ -590,9 +621,9 @@ export default function ImageConverter({ fixedInputFormat, fixedOutputFormat }: 
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Download All (ZIP)
+              Download ZIP
             </span>
-            <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-700 -skew-x-12 transform origin-left"></div>
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           </button>
         </section>
       )}
