@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import React from "react";
 import NavBar from './NavBar';
 import HelloBar from './components/HelloBar';
+import ToastProvider from './components/ToastProvider';
 import Script from 'next/script';
 
 const geistSans = Geist({
@@ -130,7 +128,7 @@ export default function RootLayout({
            &  <a href="https://ablamohamedamine.com/" target="_blank" rel="dofollow" className="text-purple-400 hover:text-purple-300 transition">Mohamed Amine Abla</a>
         </footer>
         
-        <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick pauseOnFocusLoss draggable pauseOnHover />
+        <ToastProvider />
       </body>
     </html>
   );
