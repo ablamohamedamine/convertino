@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
-import emailjs from 'emailjs-com';
+import emailjs from '@emailjs/browser'; // Updated to the official modern browser package
 import FloatingBackground from '@/app/components/FloatingBackground';
 
 export default function ContactPage() {
@@ -68,7 +68,6 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <div className="font-medium text-gray-200 mb-1">Email</div>
-                  {/* Fixed the missing mailto: in the href */}
                   <a href="mailto:billel.chami.dev@gmail.com" className="text-blue-400 hover:text-blue-300 transition">
                     billel.chami.dev@gmail.com
                   </a>
@@ -114,10 +113,14 @@ export default function ContactPage() {
                 e.preventDefault();
                 setFormStatus('sending');
                 try {
+                  // Integrated full official parameters options object block
                   await emailjs.sendForm(
                     'service_ftfofc7',
                     'template_rcy710u',
                     formRef.current!,
+                    {
+                      publicKey: 'Tte3YZ4b7Yy8BHgVN',
+                    }
                   );
                   setFormStatus('success');
                   formRef.current?.reset();
